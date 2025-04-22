@@ -150,10 +150,8 @@ function setupFileDragAndDrop() {
     
     // モバイルデバイスでの直接ファイル選択サポート
     if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        // iOSデバイスの場合は追加の処理
-        if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-            fileInput.setAttribute('capture', 'user');
-        }
+        // iOSデバイスでもタップで選択できるように修正
+        fileInput.removeAttribute('capture'); // captureを削除
     }
     
     const dropArea = document.createElement('div');
@@ -168,12 +166,26 @@ function setupFileDragAndDrop() {
     fileInput.style.display = 'none';
     fileInput.parentNode.insertBefore(dropArea, fileInput);
     dropArea.appendChild(fileInput);
+    
+    // スマホでタップできるように修正：ファイル選択を適切に配置
+    dropArea.style.position = 'relative';
     fileInput.style.opacity = 0;
     fileInput.style.position = 'absolute';
     fileInput.style.top = 0;
     fileInput.style.left = 0;
     fileInput.style.width = '100%';
     fileInput.style.height = '100%';
+    fileInput.style.cursor = 'pointer';
+    fileInput.style.zIndex = 1; // この行を追加
+    
+    // タップフィードバックの追加
+    dropArea.addEventListener('touchstart', function() {
+        this.classList.add('active');
+    });
+    
+    dropArea.addEventListener('touchend', function() {
+        this.classList.remove('active');
+    });
     
     // ドラッグオーバーイベント
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -214,6 +226,13 @@ function setupFileDragAndDrop() {
             updateFileDisplay(files[0]);
         }
     }
+    
+    // タップでもファイル選択ができるように明示的にイベントを設定
+    dropArea.addEventListener('click', function(e) {
+        if (e.target !== fileInput) {
+            fileInput.click();
+        }
+    });
     
     // 通常のファイル選択時
     fileInput.addEventListener('change', function() {
@@ -257,10 +276,25 @@ function handleFileUpload() {
         return;
     }
     
-    // ファイル形式チェック
-    const allowedTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/ogg', 'audio/flac'];
-    if (!allowedTypes.includes(audioFile.type) && !audioFile.name.match(/\.(mp3|wav|m4a|aac|ogg|flac)$/i)) {
-        showAlert('対応していないファイル形式です。', 'danger');
+    // ファイル名でもチェックするように改善
+    const fileName = audioFile.name.toLowerCase();
+    const fileExt = fileName.split('.').pop();
+    
+    // ファイル形式チェック - MIMEタイプとファイル拡張子の両方で判断
+    const allowedExts = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'];
+    const allowedTypes = [
+        'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav',
+        'audio/mp4', 'audio/m4a', 'audio/x-m4a',
+        'audio/aac', 'audio/x-aac',
+        'audio/ogg', 'audio/flac'
+    ];
+    
+    // タイプチェックの前にデバッグ情報をコンソールに出力
+    console.log('File MIME type:', audioFile.type);
+    console.log('File extension:', fileExt);
+    
+    if (!(allowedTypes.includes(audioFile.type) || allowedExts.includes(fileExt))) {
+        showAlert(`対応していないファイル形式です。拡張子: ${fileExt}, タイプ: ${audioFile.type}`, 'danger');
         return;
     }
     
@@ -334,8 +368,26 @@ async function startTranscription() {
     try {
         // FormDataの作成
         const formData = new FormData();
-        formData.append('file', audioFile);
+        
+        // ファイル拡張子に基づいてMIMEタイプを設定 (特にm4aファイル対応)
+        const fileName = audioFile.name.toLowerCase();
+        const fileExt = fileName.split('.').pop();
+        let mimeType = audioFile.type;
+        
+        // m4aがうまく認識されない場合に強制的にMIMEタイプを設定
+        if (fileExt === 'm4a' && (!mimeType || mimeType === 'application/octet-stream')) {
+            mimeType = 'audio/m4a';
+        }
+        
+        // ファイル情報のデバッグ出力
+        console.log('Uploading file:', fileName);
+        console.log('File size:', audioFile.size);
+        console.log('MIME type:', mimeType);
+        
+        // ファイルとAPIキーをフォームに追加
+        formData.append('file', audioFile, audioFile.name);
         formData.append('openai_api_key', openaiApiKey);
+        formData.append('file_type', fileExt); // サーバーサイドでファイル形式を判断するためのヒント
         
         // サーバーサイドに処理リクエスト
         updateProgressStatus(20, 'サーバーへファイルを送信中...');
@@ -391,14 +443,35 @@ function copyTranscriptToClipboard() {
         return;
     }
     
-    navigator.clipboard.writeText(transcriptText)
-        .then(() => {
+    // モバイルとデスクトップで異なるアプローチを使用
+    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        // モバイル向けのフォールバック
+        const tempElement = document.createElement('textarea');
+        tempElement.value = transcriptText;
+        document.body.appendChild(tempElement);
+        tempElement.select();
+        tempElement.setSelectionRange(0, 99999); // For mobile devices
+        
+        try {
+            document.execCommand('copy');
             showAlert('テキストをクリップボードにコピーしました！', 'success');
-        })
-        .catch(err => {
-            console.error('クリップボードへのコピーに失敗しました:', err);
+        } catch (err) {
+            console.error('コピーに失敗しました:', err);
             showAlert('コピーに失敗しました。', 'danger');
-        });
+        }
+        
+        document.body.removeChild(tempElement);
+    } else {
+        // 最新のClipboard API使用
+        navigator.clipboard.writeText(transcriptText)
+            .then(() => {
+                showAlert('テキストをクリップボードにコピーしました！', 'success');
+            })
+            .catch(err => {
+                console.error('クリップボードへのコピーに失敗しました:', err);
+                showAlert('コピーに失敗しました。', 'danger');
+            });
+    }
 }
 
 // テキストのダウンロード
@@ -422,7 +495,9 @@ function downloadTranscript() {
     
     // iOSの場合は特別な処理
     if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        // iOSでは新しいウィンドウでファイルを開いてユーザーにダウンロードさせる
         a.target = '_blank';
+        a.setAttribute('download', a.download);
         a.dataset.downloadurl = ['text/plain', a.download, a.href].join(':');
     }
     
