@@ -57,12 +57,12 @@
                 <form id="apiKeyForm">
                     <div class="mb-3">
                         <label for="openaiApiKey" class="form-label">OpenAI API Key</label>
-                        <input type="text" class="form-control api-input" id="openaiApiKey" name="openai_api_key" placeholder="sk-...">
+                        <input type="text" class="form-control api-input" id="openaiApiKey" name="openai_api_key" placeholder="sk-..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                         <div class="form-text">
-                            <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI公式サイト</a>から取得できます。
+                            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI公式サイト</a>から取得できます。
                         </div>
                     </div>
-                    <button type="submit" class="btn btn-primary">APIキーを保存</button>
+                    <button type="submit" class="btn btn-primary touch-feedback">APIキーを保存</button>
                 </form>
             </div>
         </div>
@@ -76,12 +76,13 @@
                 <form id="uploadForm">
                     <div class="mb-3">
                         <label for="audioFile" class="form-label">音声ファイル選択</label>
-                        <input class="form-control" type="file" id="audioFile" accept=".mp3,.wav,.m4a,.aac,.ogg,.flac">
+                        <!-- accept属性をすべての対応フォーマットで明示 -->
+                        <input class="form-control" type="file" id="audioFile" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/x-m4a,audio/aac,audio/x-aac,audio/ogg,audio/flac,.mp3,.wav,.m4a,.aac,.ogg,.flac">
                         <div class="form-text">
                             対応フォーマット: MP3, WAV, M4A, AAC, OGG, FLAC (最大32MB)
                         </div>
                     </div>
-                    <button type="submit" class="btn btn-primary" id="uploadButton">選択したファイルを読み込む</button>
+                    <button type="submit" class="btn btn-primary touch-feedback" id="uploadButton">選択したファイルを読み込む</button>
                     
                     <div class="progress mt-3" id="uploadProgress">
                         <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
@@ -104,7 +105,7 @@
                 <p>選択した音声ファイルを文字起こしします。</p>
                 <p class="text-muted small">※処理には1分ほどかかる場合があります。</p>
                 
-                <button class="btn btn-primary" id="transcribeButton">文字起こし開始</button>
+                <button class="btn btn-primary touch-feedback" id="transcribeButton">文字起こし開始</button>
                 
                 <div class="progress mt-3" id="transcribeProgress">
                     <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" role="progressbar" style="width: 0%"></div>
@@ -128,15 +129,28 @@
                 <div class="transcript-box mb-3" id="transcriptResult"></div>
                 
                 <div class="d-flex justify-content-between flex-wrap">
-                    <button class="btn btn-secondary mb-2" id="copyButton">
+                    <button class="btn btn-secondary mb-2 touch-feedback" id="copyButton">
                         <i class="bi bi-clipboard"></i> テキストをコピー
                     </button>
-                    <button class="btn btn-success mb-2" id="downloadButton">
+                    <button class="btn btn-success mb-2 touch-feedback" id="downloadButton">
                         <i class="bi bi-download"></i> テキストをダウンロード
                     </button>
-                    <button class="btn btn-warning mb-2" id="resetButton">
+                    <button class="btn btn-warning mb-2 touch-feedback" id="resetButton">
                         <i class="bi bi-arrow-clockwise"></i> 最初からやり直す
                     </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 処理状況の通知 (モバイル向け) -->
+        <div class="toast-container">
+            <div class="toast" role="alert" aria-live="assertive" aria-atomic="true" id="processToast" style="display: none;">
+                <div class="toast-header">
+                    <strong class="me-auto">処理状況</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body" id="processToastBody">
+                    処理中...
                 </div>
             </div>
         </div>
@@ -200,6 +214,31 @@
         </div>
     </div>
 
+    <!-- デバッグ情報モーダル (開発者向け) -->
+    <div class="modal fade" id="debugModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">デバッグ情報</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>環境情報</h6>
+                    <pre id="userAgentInfo" class="bg-light p-2"></pre>
+                    
+                    <h6>ファイル情報</h6>
+                    <pre id="fileDebugInfo" class="bg-light p-2"></pre>
+                    
+                    <h6>ログ</h6>
+                    <pre id="debugLog" class="bg-light p-2" style="max-height: 300px; overflow-y: auto;"></pre>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="app.js"></script>
     
@@ -239,6 +278,39 @@
                     var offlineModal = new bootstrap.Modal(document.getElementById('offlineModal'));
                     offlineModal.show();
                 }
+            }
+            
+            // デバッグモード (開発中のみ)
+            if (window.location.search.includes('debug=true')) {
+                // デバッグボタンを追加
+                const footer = document.querySelector('.app-footer');
+                const debugButton = document.createElement('button');
+                debugButton.className = 'btn btn-sm btn-secondary mt-2';
+                debugButton.textContent = 'デバッグ情報';
+                debugButton.addEventListener('click', function() {
+                    document.getElementById('userAgentInfo').textContent = navigator.userAgent;
+                    
+                    const debugModal = new bootstrap.Modal(document.getElementById('debugModal'));
+                    debugModal.show();
+                });
+                footer.appendChild(debugButton);
+                
+                // コンソールログをデバッグモーダルにも出力
+                const originalConsoleLog = console.log;
+                console.log = function() {
+                    const args = Array.from(arguments);
+                    originalConsoleLog.apply(console, args);
+                    
+                    const debugLog = document.getElementById('debugLog');
+                    if (debugLog) {
+                        const logItem = document.createElement('div');
+                        logItem.textContent = args.map(arg => 
+                            typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+                        ).join(' ');
+                        debugLog.appendChild(logItem);
+                        debugLog.scrollTop = debugLog.scrollHeight;
+                    }
+                };
             }
         });
     </script>
