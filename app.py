@@ -3,9 +3,14 @@ import os
 import uuid
 import json
 import requests
+import mimetypes
+import logging
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__, static_folder='.', static_url_path='')
+
+# ロギング設定
+logging.basicConfig(level=logging.INFO)
 
 # フォルダの設定
 UPLOAD_FOLDER = 'uploads'
@@ -15,8 +20,21 @@ RESULT_FOLDER = 'results'
 for folder in [UPLOAD_FOLDER, RESULT_FOLDER]:
     os.makedirs(folder, exist_ok=True)
 
+# MIMEタイプの追加登録（特にm4a向け）
+mimetypes.add_type('audio/m4a', '.m4a')
+mimetypes.add_type('audio/aac', '.aac')
+
 # ファイルアップロードの設定
 ALLOWED_EXTENSIONS = {'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'mp4', 'mpeg', 'mpga', 'webm'}
+ALLOWED_MIMETYPES = {
+    'audio/mpeg', 'audio/mp3', 
+    'audio/wav', 'audio/x-wav', 
+    'audio/mp4', 'audio/m4a', 'audio/x-m4a',
+    'audio/aac', 'audio/x-aac',
+    'audio/ogg', 'audio/flac',
+    'application/octet-stream'  # バイナリとして送信される場合も許可
+}
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024  # 最大32MB
 
@@ -51,14 +69,28 @@ def transcribe_audio():
     if file.filename == '':
         return jsonify({'error': 'ファイルが選択されていません'}), 400
     
-    if not allowed_file(file.filename):
-        return jsonify({'error': '対応していないファイル形式です'}), 400
+    # フロントエンドから渡されたファイル形式情報を取得
+    file_type = request.form.get('file_type', '')
+    
+    # ファイル情報をログに出力
+    app.logger.info(f"ファイル情報: 名前={file.filename}, MIME={file.content_type}, タイプ={file_type}")
+    
+    # ファイル形式チェック - 拡張子とMIMEタイプの両方で判断
+    is_allowed_ext = allowed_file(file.filename)
+    is_allowed_mime = file.content_type in ALLOWED_MIMETYPES
+    
+    if not (is_allowed_ext or is_allowed_mime):
+        # ファイル情報のロギング
+        app.logger.error(f"不正なファイル形式: {file.filename}, MIME: {file.content_type}, 拡張子: {file_type}")
+        return jsonify({'error': f'対応していないファイル形式です（{file.content_type}）'}), 400
     
     # ファイルの保存
     unique_id = str(uuid.uuid4())
     filename = secure_filename(file.filename)
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{unique_id}_{filename}")
     file.save(file_path)
+    
+    app.logger.info(f"ファイル保存完了: {file_path}")
     
     try:
         # OpenAI Whisper APIによる文字起こし
@@ -72,6 +104,8 @@ def transcribe_audio():
         with open(result_file, 'w', encoding='utf-8') as f:
             f.write(formatted_text)
         
+        app.logger.info(f"文字起こし完了: {result_file}")
+        
         # 成功レスポンス
         return jsonify({
             'success': True,
@@ -81,6 +115,7 @@ def transcribe_audio():
     
     except Exception as e:
         # エラーハンドリング
+        app.logger.error(f"エラー発生: {str(e)}")
         return jsonify({
             'error': str(e)
         }), 500
@@ -89,8 +124,9 @@ def transcribe_audio():
         # 処理が終わったらアップロードファイルを削除
         try:
             os.remove(file_path)
-        except:
-            pass
+            app.logger.info(f"一時ファイル削除: {file_path}")
+        except Exception as e:
+            app.logger.warning(f"一時ファイル削除に失敗: {file_path}, エラー: {str(e)}")
 
 # OpenAI Whisper APIによる文字起こし
 def transcribe_with_whisper(file_path, api_key):
@@ -99,9 +135,17 @@ def transcribe_with_whisper(file_path, api_key):
         "Authorization": f"Bearer {api_key}"
     }
     
+    # ファイルの拡張子を取得
+    file_ext = os.path.splitext(file_path)[1].lower()
+    
+    # 拡張子からMIMEタイプを決定
+    content_type = mimetypes.guess_type(file_path)[0] or 'audio/mpeg'
+    
+    app.logger.info(f"Whisper API リクエスト準備: {os.path.basename(file_path)}, タイプ: {content_type}")
+    
     with open(file_path, 'rb') as f:
         files = {
-            'file': (os.path.basename(file_path), f, 'audio/mpeg'),
+            'file': (os.path.basename(file_path), f, content_type),
             'model': (None, 'whisper-1'),
             'language': (None, 'ja'),
             'response_format': (None, 'verbose_json')
@@ -111,6 +155,7 @@ def transcribe_with_whisper(file_path, api_key):
         
         if response.status_code != 200:
             error_message = f"OpenAI API エラー (文字起こし): {response.status_code} - {response.text}"
+            app.logger.error(error_message)
             raise Exception(error_message)
         
         result = response.json()
@@ -176,6 +221,7 @@ def format_with_chatgpt(text, api_key):
     
     if response.status_code != 200:
         error_message = f"OpenAI API エラー: {response.status_code} - {response.text}"
+        app.logger.error(error_message)
         raise Exception(error_message)
     
     result = response.json()
