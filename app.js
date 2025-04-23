@@ -207,6 +207,16 @@ function setupFileDragAndDrop() {
 // ファイルアップロード処理
 function handleFileUpload() {
     if (!audioFile) {
+        // アップロード状況表示用要素を取得または作成
+        let statusEl = document.getElementById("uploadStatusText");
+        if (!statusEl) {
+                statusEl = document.createElement("div");
+                statusEl.id = "uploadStatusText";
+                statusEl.className = "mt-2 text-center";
+                const progressContainer = document.getElementById("uploadProgress");
+                if (progressContainer) progressContainer.after(statusEl);
+        }
+        statusEl.textContent = "アップロード開始...";
         const fileInput = document.getElementById('audioFile');
         if (fileInput.files.length) {
             audioFile = fileInput.files[0];
@@ -260,6 +270,7 @@ function handleFileUpload() {
         progress += 10;
         if (progress > 90) clearInterval(readInterval);
         progressBar.style.width = `${progress}%`;
+        statusEl.textContent = `読み込み中… ${progress}%`;
         progressBar.setAttribute('aria-valuenow', progress);
     }, 100);
     
@@ -267,6 +278,7 @@ function handleFileUpload() {
     setTimeout(() => {
         clearInterval(readInterval);
         progressBar.style.width = '100%';
+        statusEl.textContent = "読み込み完了";
         progressBar.setAttribute('aria-valuenow', 100);
         
         document.getElementById('uploadSuccess').style.display = 'block';
