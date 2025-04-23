@@ -206,6 +206,7 @@ function setupFileDragAndDrop() {
 
 // ファイルアップロード処理
 function handleFileUpload() {
+            console.log("handleFileUpload invoked");
         // アップロードステータス表示エリアを準備
         let statusEl = document.getElementById("uploadStatusText");
         if (!statusEl) {
