@@ -281,6 +281,8 @@ function handleFileUpload() {
             document.getElementById('transcribeCard').scrollIntoView({ behavior: 'smooth' });
         }
     }, 1000);
+    // ファイルアップロード後に自動で文字起こし開始
+    startTranscription();
 }
 
 // ファイル情報表示
