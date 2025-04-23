@@ -1,6 +1,7 @@
 // グローバル変数
 let audioFile = null;
 let transcriptText = '';
+let processingStatus = false; // 処理中かどうかのフラグ
 
 // ページロード時の初期化
 document.addEventListener('DOMContentLoaded', function() {
@@ -22,16 +23,11 @@ function initializeApp() {
 function checkMobileDevice() {
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     if (isMobile) {
-        // モバイル向け最適化
         document.documentElement.classList.add('mobile-device');
-        
-        // iOS向けのメタタグを追加
         const viewportMeta = document.querySelector('meta[name="viewport"]');
         if (viewportMeta) {
             viewportMeta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
         }
-        
-        // 安全領域を考慮したCSSを適用
         document.body.style.paddingTop = 'env(safe-area-inset-top)';
         document.body.style.paddingBottom = 'env(safe-area-inset-bottom)';
     }
@@ -63,42 +59,23 @@ function setupEventListeners() {
         transcribeButton.addEventListener('click', startTranscription);
     }
 
-    // テキストのコピーボタン
-    const copyButton = document.getElementById('copyButton');
-    if (copyButton) {
-        copyButton.addEventListener('click', copyTranscriptToClipboard);
-    }
-
-    // ダウンロードボタン
-    const downloadButton = document.getElementById('downloadButton');
-    if (downloadButton) {
-        downloadButton.addEventListener('click', downloadTranscript);
-    }
-
-    // リセットボタン
-    const resetButton = document.getElementById('resetButton');
-    if (resetButton) {
-        resetButton.addEventListener('click', function() {
-            window.location.reload();
-        });
-    }
+    // その他のボタン
+    document.getElementById('copyButton')?.addEventListener('click', copyTranscriptToClipboard);
+    document.getElementById('downloadButton')?.addEventListener('click', downloadTranscript);
+    document.getElementById('resetButton')?.addEventListener('click', () => window.location.reload());
     
-    // モバイルデバイス向けのタッチイベント
+    // モバイルデバイス向けのタッチフィードバック
     addTouchFeedback();
 }
 
 // ボタンへのタッチフィードバックを追加
 function addTouchFeedback() {
-    const buttons = document.querySelectorAll('.btn');
-    
-    buttons.forEach(button => {
-        // タッチ開始時
+    document.querySelectorAll('.btn').forEach(button => {
         button.addEventListener('touchstart', function() {
             this.style.transform = 'scale(0.97)';
             this.style.opacity = '0.9';
         });
         
-        // タッチ終了時
         ['touchend', 'touchcancel'].forEach(event => {
             button.addEventListener(event, function() {
                 this.style.transform = 'scale(1)';
@@ -111,10 +88,8 @@ function addTouchFeedback() {
 // ローカルストレージからAPIキーを読み込む
 function loadApiKeys() {
     const openaiApiKey = localStorage.getItem('openai_api_key') || '';
-    
     document.getElementById('openaiApiKey').value = openaiApiKey;
     
-    // APIキーが存在すれば次のステップへ
     if (openaiApiKey) {
         document.getElementById('uploadCard').style.display = 'block';
         updateSteps(2);
@@ -130,13 +105,11 @@ function saveApiKeys() {
         return;
     }
     
-    // APIキーの形式チェック
     if (!openaiApiKey.startsWith('sk-')) {
         showAlert('OpenAI APIキーの形式が正しくありません（sk-で始まる必要があります）。', 'danger');
         return;
     }
     
-    // ローカルストレージに保存
     localStorage.setItem('openai_api_key', openaiApiKey);
     
     showAlert('APIキーを保存しました！', 'success');
@@ -150,8 +123,7 @@ function setupFileDragAndDrop() {
     
     // モバイルデバイスでの直接ファイル選択サポート
     if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        // iOSデバイスでもタップで選択できるように修正
-        fileInput.removeAttribute('capture'); // captureを削除
+        fileInput.removeAttribute('capture');
     }
     
     const dropArea = document.createElement('div');
@@ -162,12 +134,11 @@ function setupFileDragAndDrop() {
         <p class="file-message">音声ファイルをドラッグ＆ドロップ<br>または<br>タップしてファイルを選択</p>
     `;
     
-    // ファイル入力を非表示にし、カスタムドロップエリアを追加
     fileInput.style.display = 'none';
     fileInput.parentNode.insertBefore(dropArea, fileInput);
     dropArea.appendChild(fileInput);
     
-    // スマホでタップできるように修正：ファイル選択を適切に配置
+    // スマホでタップできるように修正
     dropArea.style.position = 'relative';
     fileInput.style.opacity = 0;
     fileInput.style.position = 'absolute';
@@ -176,80 +147,55 @@ function setupFileDragAndDrop() {
     fileInput.style.width = '100%';
     fileInput.style.height = '100%';
     fileInput.style.cursor = 'pointer';
-    fileInput.style.zIndex = 1; // この行を追加
+    fileInput.style.zIndex = 1;
     
-    // タップフィードバックの追加
-    dropArea.addEventListener('touchstart', function() {
-        this.classList.add('active');
+    // タップフィードバック
+    ['touchstart', 'touchend'].forEach(event => {
+        dropArea.addEventListener(event, function() {
+            this.classList.toggle('active', event === 'touchstart');
+        });
     });
     
-    dropArea.addEventListener('touchend', function() {
-        this.classList.remove('active');
-    });
-    
-    // ドラッグオーバーイベント
+    // ドラッグイベント
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropArea.addEventListener(eventName, preventDefaults, false);
+        dropArea.addEventListener(eventName, e => {
+            e.preventDefault();
+            e.stopPropagation();
+        }, false);
     });
-    
-    function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
     
     // ハイライト表示
     ['dragenter', 'dragover'].forEach(eventName => {
-        dropArea.addEventListener(eventName, highlight, false);
+        dropArea.addEventListener(eventName, () => dropArea.classList.add('highlight'), false);
     });
     
     ['dragleave', 'drop'].forEach(eventName => {
-        dropArea.addEventListener(eventName, unhighlight, false);
+        dropArea.addEventListener(eventName, () => dropArea.classList.remove('highlight'), false);
     });
     
-    function highlight() {
-        dropArea.classList.add('highlight');
-    }
-    
-    function unhighlight() {
-        dropArea.classList.remove('highlight');
-    }
-    
     // ファイルドロップ時の処理
-    dropArea.addEventListener('drop', handleDrop, false);
-    
-    function handleDrop(e) {
-        const dt = e.dataTransfer;
-        const files = dt.files;
-        
+    dropArea.addEventListener('drop', function(e) {
+        const files = e.dataTransfer.files;
         if (files.length) {
             fileInput.files = files;
             updateFileDisplay(files[0]);
         }
-    }
+    }, false);
     
-    // タップでもファイル選択ができるように明示的にイベントを設定
+    // ファイル選択UI
     dropArea.addEventListener('click', function(e) {
-        if (e.target !== fileInput) {
-            fileInput.click();
-        }
+        if (e.target !== fileInput) fileInput.click();
     });
     
-    // 通常のファイル選択時
     fileInput.addEventListener('change', function() {
-        if (this.files.length) {
-            updateFileDisplay(this.files[0]);
-        }
+        if (this.files.length) updateFileDisplay(this.files[0]);
     });
     
     // ファイル表示の更新
     function updateFileDisplay(file) {
         audioFile = file;
-        
-        // 既存のファイル表示があれば削除
         const existingFile = dropArea.querySelector('.selected-file');
-        if (existingFile) {
-            existingFile.remove();
-        }
+        if (existingFile) existingFile.remove();
         
         const fileName = document.createElement('div');
         fileName.classList.add('selected-file');
@@ -270,17 +216,16 @@ function handleFileUpload() {
         }
     }
     
-    // ファイルサイズチェック（32MB上限）
+    // ファイルチェック
     if (audioFile.size > 32 * 1024 * 1024) {
         showAlert('ファイルサイズが大きすぎます（上限:32MB）。', 'danger');
         return;
     }
     
-    // ファイル名でもチェックするように改善
     const fileName = audioFile.name.toLowerCase();
     const fileExt = fileName.split('.').pop();
     
-    // ファイル形式チェック - MIMEタイプとファイル拡張子の両方で判断
+    // ファイル形式チェック
     const allowedExts = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'];
     const allowedTypes = [
         'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav',
@@ -289,48 +234,53 @@ function handleFileUpload() {
         'audio/ogg', 'audio/flac'
     ];
     
-    // タイプチェックの前にデバッグ情報をコンソールに出力
-    console.log('File MIME type:', audioFile.type);
-    console.log('File extension:', fileExt);
+    console.log('ファイル情報:', {
+        名前: fileName,
+        サイズ: (audioFile.size / 1024 / 1024).toFixed(2) + 'MB',
+        タイプ: audioFile.type,
+        拡張子: fileExt
+    });
     
     if (!(allowedTypes.includes(audioFile.type) || allowedExts.includes(fileExt))) {
         showAlert(`対応していないファイル形式です。拡張子: ${fileExt}, タイプ: ${audioFile.type}`, 'danger');
         return;
     }
     
-    // プログレスバーの表示
+    // UI更新
     const progressBar = document.querySelector('#uploadProgress .progress-bar');
     document.getElementById('uploadProgress').style.display = 'block';
     document.getElementById('uploadButton').disabled = true;
     
-    // ファイル情報表示
     showFileInfo();
+    showToast('ファイル読み込み中...', 'info');
     
-    // プログレスバーをアニメーションで進める
+    // 読み込み状態を表現
     let progress = 0;
-    const interval = setInterval(() => {
-        progress += 5;
-        if (progress > 90) {
-            clearInterval(interval);
-            progress = 100;
-        }
+    const readInterval = setInterval(() => {
+        progress += 10;
+        if (progress > 90) clearInterval(readInterval);
         progressBar.style.width = `${progress}%`;
+        progressBar.setAttribute('aria-valuenow', progress);
     }, 100);
     
-    // 完了時の処理
+    // ファイル検証シミュレーション
     setTimeout(() => {
-        clearInterval(interval);
+        clearInterval(readInterval);
         progressBar.style.width = '100%';
+        progressBar.setAttribute('aria-valuenow', 100);
+        
         document.getElementById('uploadSuccess').style.display = 'block';
         document.getElementById('uploadButton').disabled = false;
         document.getElementById('transcribeCard').style.display = 'block';
         updateSteps(3);
         
+        showToast('ファイル読み込み完了！文字起こしを開始できます', 'success');
+        
         // モバイルでは自動スクロール
         if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
             document.getElementById('transcribeCard').scrollIntoView({ behavior: 'smooth' });
         }
-    }, 1500);
+    }, 1000);
 }
 
 // ファイル情報表示
@@ -341,8 +291,74 @@ function showFileInfo() {
     document.getElementById('fileInfo').textContent = `ファイル名: ${audioFile.name} (${fileSizeMB} MB)`;
 }
 
+// サーバーのヘルスチェック関数
+async function checkServerHealth() {
+    try {
+        showToast('サーバー接続を確認中...', 'info');
+        const response = await fetch('/api/healthcheck', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            cache: 'no-cache'
+        });
+        
+        if (response.ok) {
+            const healthData = await response.json();
+            console.log('サーバーのヘルスチェック結果:', healthData);
+            
+            if (healthData.status !== 'ok') {
+                let errorMessage = 'サーバーに問題があります: ';
+                if (!healthData.upload_folder) errorMessage += 'アップロードフォルダにアクセスできません。';
+                if (!healthData.result_folder) errorMessage += '結果フォルダにアクセスできません。';
+                showAlert(errorMessage, 'warning');
+                return false;
+            }
+            return true;
+        } else {
+            console.error('ヘルスチェックエラー:', response.status);
+            showAlert('サーバーに接続できません。ページを再読み込みするか、しばらく経ってからお試しください。', 'danger');
+            return false;
+        }
+    } catch (error) {
+        console.error('ヘルスチェック例外:', error);
+        showAlert('サーバー接続エラー: ' + error.message, 'danger');
+        return false;
+    }
+}
+
+// トースト通知を表示
+function showToast(message, type = 'info') {
+    const toast = document.getElementById('processToast');
+    const toastBody = document.getElementById('processToastBody');
+    
+    if (!toast || !toastBody) return;
+    
+    toastBody.textContent = message;
+    
+    toast.classList.remove('bg-info', 'bg-success', 'bg-warning', 'bg-danger');
+    toast.classList.add(`bg-${type}`, type === 'warning' ? 'text-dark' : 'text-white');
+    
+    toast.style.display = 'block';
+    
+    const duration = type === 'success' ? 3000 : 5000;
+    setTimeout(() => {
+        toast.style.display = 'none';
+    }, duration);
+}
+
 // 文字起こし処理開始
 async function startTranscription() {
+    console.log('文字起こし処理を開始します');
+    
+    // 処理中なら二重実行を防止
+    if (processingStatus) {
+        showAlert('すでに処理中です。しばらくお待ちください。', 'warning');
+        return;
+    }
+    
+    // サーバーのヘルスチェック
+    const serverOk = await checkServerHealth();
+    if (!serverOk) return;
+    
     // APIキーチェック
     const openaiApiKey = localStorage.getItem('openai_api_key');
     
@@ -357,54 +373,107 @@ async function startTranscription() {
         return;
     }
     
+    // 処理中フラグをセット
+    processingStatus = true;
+    
     // UI更新
     document.getElementById('transcribeProgress').style.display = 'block';
     document.getElementById('transcribeSpinner').style.display = 'block';
     document.getElementById('transcribeButton').disabled = true;
     
     // プログレスバーの初期化
-    updateProgressStatus(10, '処理を開始しています...');
+    updateProgressStatus(5, '処理を開始しています...');
+    showToast('文字起こし処理を開始します...', 'info');
     
     try {
         // FormDataの作成
         const formData = new FormData();
         
-        // ファイル拡張子に基づいてMIMEタイプを設定 (特にm4aファイル対応)
+        // ファイル拡張子に基づいてMIMEタイプを設定
         const fileName = audioFile.name.toLowerCase();
         const fileExt = fileName.split('.').pop();
         let mimeType = audioFile.type;
         
-        // m4aがうまく認識されない場合に強制的にMIMEタイプを設定
+        // m4aがうまく認識されない場合
         if (fileExt === 'm4a' && (!mimeType || mimeType === 'application/octet-stream')) {
             mimeType = 'audio/m4a';
+            console.log('m4aファイルのMIMEタイプを変更:', mimeType);
         }
         
         // ファイル情報のデバッグ出力
-        console.log('Uploading file:', fileName);
-        console.log('File size:', audioFile.size);
-        console.log('MIME type:', mimeType);
-        
-        // ファイルとAPIキーをフォームに追加
-        formData.append('file', audioFile, audioFile.name);
-        formData.append('openai_api_key', openaiApiKey);
-        formData.append('file_type', fileExt); // サーバーサイドでファイル形式を判断するためのヒント
-        
-        // サーバーサイドに処理リクエスト
-        updateProgressStatus(20, 'サーバーへファイルを送信中...');
-        
-        const response = await fetch('/api/transcribe', {
-            method: 'POST',
-            body: formData
+        console.log('アップロードファイル情報:', {
+            ファイル名: fileName,
+            サイズ: (audioFile.size / 1024 / 1024).toFixed(2) + 'MB',
+            MIMEタイプ: mimeType,
+            拡張子: fileExt
         });
         
+        // フォームデータ準備
+        formData.append('file', audioFile, audioFile.name);
+        formData.append('openai_api_key', openaiApiKey);
+        formData.append('file_type', fileExt);
+        
+        // 進捗表示を更新するインターバル
+        let progressValue = 10;
+        updateProgressStatus(progressValue, 'サーバーへファイルを送信中...');
+        showToast('ファイルをアップロード中...', 'info');
+        
+        const progressInterval = setInterval(() => {
+            if (progressValue < 85) {
+                progressValue += 1;
+                updateProgressStatus(progressValue, '文字起こし処理中...');
+                
+                // 進行状況に応じてメッセージを変更
+                if (progressValue === 20) {
+                    showToast('音声をWhisper APIに送信中...', 'info');
+                } else if (progressValue === 40) {
+                    showToast('音声の分析中...', 'info');
+                } else if (progressValue === 60) {
+                    showToast('テキストを整形中...', 'info');
+                } else if (progressValue === 80) {
+                    showToast('もうすぐ完了します...', 'info');
+                }
+            }
+        }, 2000);
+        
+        // タイムアウト設定
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5分
+        
+        // サーバーリクエスト送信
+        const response = await fetch('/api/transcribe', {
+            method: 'POST',
+            body: formData,
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        clearInterval(progressInterval);
+        
+        console.log('サーバーレスポンス受信:', response.status);
+        
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'サーバーエラーが発生しました');
+            let errorMessage = 'サーバーエラーが発生しました';
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+                console.error('サーバーエラー詳細:', errorData);
+            } catch (e) {
+                console.error('エラーレスポンスの解析に失敗:', e);
+            }
+            throw new Error(errorMessage);
         }
         
         updateProgressStatus(90, 'レスポンスを処理中...');
+        showToast('文字起こし結果を受信中...', 'info');
         
         const data = await response.json();
+        console.log('文字起こし結果受信成功');
+        
+        if (!data.text) {
+            throw new Error('文字起こし結果が空です');
+        }
+        
         transcriptText = data.text;
         
         // 結果表示
@@ -414,6 +483,7 @@ async function startTranscription() {
         
         // 完了
         updateProgressStatus(100, '処理完了！');
+        showToast('文字起こしが完了しました！', 'success');
         
         // モバイルでは自動スクロール
         if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
@@ -421,9 +491,47 @@ async function startTranscription() {
         }
         
     } catch (error) {
-        console.error('Error:', error);
-        showAlert(`エラー: ${error.message}`, 'danger');
+        console.error('文字起こし処理エラー:', error);
+        
+        // エラーメッセージの詳細化
+        let errorMessage = error.message || 'unknown error';
+        let detailedMessage = '';
+        
+        // エラータイプに基づいて適切なメッセージを設定
+        if (error.name === 'AbortError') {
+            detailedMessage = 'リクエストがタイムアウトしました。ネットワーク接続を確認するか、小さいファイルで試してください。';
+            showToast('タイムアウトしました', 'danger');
+        } else if (error.name === 'TypeError' && errorMessage.includes('Failed to fetch')) {
+            detailedMessage = 'サーバーとの通信に失敗しました。インターネット接続を確認してください。';
+            showToast('サーバー接続エラー', 'danger');
+        } else if (errorMessage.includes('API')) {
+            detailedMessage = 'OpenAI APIとの通信に問題があります。APIキーが有効か確認してください。';
+            showToast('API接続エラー', 'danger');
+        } else {
+            showToast('エラーが発生しました', 'danger');
+        }
+        
+        showAlert(`エラー: ${errorMessage}${detailedMessage ? '<br>' + detailedMessage : ''}`, 'danger');
+        
+        // エラー時のデバッグ情報収集
+        if (window.location.search.includes('debug=true')) {
+            const debugInfo = document.getElementById('fileDebugInfo');
+            if (debugInfo) {
+                debugInfo.textContent = JSON.stringify({
+                    error: errorMessage,
+                    file: audioFile ? {
+                        name: audioFile.name,
+                        size: audioFile.size,
+                        type: audioFile.type
+                    } : 'no file',
+                    userAgent: navigator.userAgent,
+                    timestamp: new Date().toISOString()
+                }, null, 2);
+            }
+        }
     } finally {
+        // 処理中フラグを解除
+        processingStatus = false;
         document.getElementById('transcribeButton').disabled = false;
         document.getElementById('transcribeSpinner').style.display = 'none';
     }
@@ -433,6 +541,7 @@ async function startTranscription() {
 function updateProgressStatus(progress, statusText) {
     const progressBar = document.querySelector('#transcribeProgress .progress-bar');
     progressBar.style.width = `${progress}%`;
+    progressBar.setAttribute('aria-valuenow', progress);
     document.getElementById('transcribeStatus').textContent = statusText;
 }
 
@@ -443,34 +552,25 @@ function copyTranscriptToClipboard() {
         return;
     }
     
-    // モバイルとデスクトップで異なるアプローチを使用
-    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        // モバイル向けのフォールバック
-        const tempElement = document.createElement('textarea');
-        tempElement.value = transcriptText;
-        document.body.appendChild(tempElement);
-        tempElement.select();
-        tempElement.setSelectionRange(0, 99999); // For mobile devices
-        
-        try {
+    try {
+        if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+            // モバイル向け
+            const tempElement = document.createElement('textarea');
+            tempElement.value = transcriptText;
+            document.body.appendChild(tempElement);
+            tempElement.select();
+            tempElement.setSelectionRange(0, 99999);
             document.execCommand('copy');
-            showAlert('テキストをクリップボードにコピーしました！', 'success');
-        } catch (err) {
-            console.error('コピーに失敗しました:', err);
-            showAlert('コピーに失敗しました。', 'danger');
+            document.body.removeChild(tempElement);
+        } else {
+            // デスクトップ向け
+            navigator.clipboard.writeText(transcriptText);
         }
-        
-        document.body.removeChild(tempElement);
-    } else {
-        // 最新のClipboard API使用
-        navigator.clipboard.writeText(transcriptText)
-            .then(() => {
-                showAlert('テキストをクリップボードにコピーしました！', 'success');
-            })
-            .catch(err => {
-                console.error('クリップボードへのコピーに失敗しました:', err);
-                showAlert('コピーに失敗しました。', 'danger');
-            });
+        showAlert('テキストをクリップボードにコピーしました！', 'success');
+        showToast('テキストをコピーしました', 'success');
+    } catch (err) {
+        console.error('コピーエラー:', err);
+        showAlert('コピーに失敗しました。', 'danger');
     }
 }
 
@@ -495,7 +595,6 @@ function downloadTranscript() {
     
     // iOSの場合は特別な処理
     if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-        // iOSでは新しいウィンドウでファイルを開いてユーザーにダウンロードさせる
         a.target = '_blank';
         a.setAttribute('download', a.download);
         a.dataset.downloadurl = ['text/plain', a.download, a.href].join(':');
@@ -507,6 +606,7 @@ function downloadTranscript() {
     URL.revokeObjectURL(url);
     
     showAlert('ファイルをダウンロードしました！', 'success');
+    showToast('ファイルをダウンロードしました', 'success');
 }
 
 // ステップ表示の更新
@@ -537,45 +637,22 @@ function showAlert(message, type) {
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     `;
     
-    // アラートが既に表示されていれば削除
-    const existingAlerts = document.querySelectorAll('.alert');
-    existingAlerts.forEach(alert => {
-        alert.remove();
-    });
+    // 既存のアラートを削除
+    document.querySelectorAll('.alert').forEach(alert => alert.remove());
     
-    // カードの最初の要素としてアラートを挿入
+    // ターゲットカードを特定
     const currentStep = document.querySelector('.step.active');
     const stepNum = Array.from(document.querySelectorAll('.step')).indexOf(currentStep) + 1;
-    let targetCard;
-    
-    switch (stepNum) {
-        case 1:
-            targetCard = document.getElementById('apiKeyCard');
-            break;
-        case 2:
-            targetCard = document.getElementById('uploadCard');
-            break;
-        case 3:
-            targetCard = document.getElementById('transcribeCard');
-            break;
-        case 4:
-            targetCard = document.getElementById('resultCard');
-            break;
-        default:
-            targetCard = document.getElementById('apiKeyCard');
-    }
+    const targetCardId = ['apiKeyCard', 'uploadCard', 'transcribeCard', 'resultCard'][stepNum - 1] || 'apiKeyCard';
+    const targetCard = document.getElementById(targetCardId);
     
     if (targetCard) {
         const cardBody = targetCard.querySelector('.card-body');
-        if (cardBody) {
-            cardBody.prepend(alertDiv);
-        }
+        if (cardBody) cardBody.prepend(alertDiv);
     }
     
     // 5秒後に自動的に消える
-    setTimeout(() => {
-        alertDiv.remove();
-    }, 5000);
+    setTimeout(() => alertDiv.remove(), 5000);
     
     // モバイルデバイスではバイブレーション
     if (navigator.vibrate && type === 'danger') {

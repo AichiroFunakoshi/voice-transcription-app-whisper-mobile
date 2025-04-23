@@ -105,6 +105,42 @@ body {
     display: none;
 }
 
+/* プログレスバースタイル改善 */
+.progress {
+    height: 1rem;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background-color: #e9ecef;
+    margin: 1rem 0;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.progress-bar {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+    color: #fff;
+    text-align: center;
+    white-space: nowrap;
+    background-color: #4285F4;
+    transition: width 0.3s ease-in-out;
+}
+
+.progress-bar-striped {
+    background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0.15) 75%, transparent 75%, transparent);
+    background-size: 1rem 1rem;
+}
+
+.progress-bar-animated {
+    animation: progress-bar-stripes 1s linear infinite;
+}
+
+@keyframes progress-bar-stripes {
+    from { background-position: 1rem 0; }
+    to { background-position: 0 0; }
+}
+
 /* ファイルドロップエリア - スマホ対応改善 */
 .file-drop-area {
     position: relative;
@@ -289,40 +325,107 @@ body {
     }
 }
 
-/* トースト通知 */
+/* トースト通知 - 改善版 */
 .toast-container {
     position: fixed;
     bottom: 20px;
     right: 20px;
     z-index: 1050;
+    width: 300px;
+    max-width: 90%;
 }
 
 .toast {
-    background-color: white;
-    color: #212529;
+    color: #fff;
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    margin-bottom: 10px;
-    width: 300px;
-    max-width: 100%;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    margin-bottom: 15px;
+    overflow: hidden;
+    animation: slideIn 0.3s ease-out;
+    opacity: 0.95;
+    transition: all 0.2s ease;
+    border: none;
+}
+
+.toast:hover {
+    opacity: 1;
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.toast.bg-info {
+    background-color: #4285F4 !important;
+}
+
+.toast.bg-success {
+    background-color: #34A853 !important;
+}
+
+.toast.bg-warning {
+    background-color: #FBBC05 !important;
+}
+
+.toast.bg-danger {
+    background-color: #EA4335 !important;
 }
 
 .toast-header {
-    border-bottom: 1px solid #dee2e6;
-    padding: 8px 12px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 10px 15px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    color: inherit;
 }
 
 .toast-body {
-    padding: 12px;
+    padding: 15px;
+    font-size: 15px;
+    line-height: 1.4;
+}
+
+@keyframes slideIn {
+    from { 
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to { 
+        transform: translateX(0);
+        opacity: 0.95;
+    }
+}
+
+/* iOS Safe Areas対応のトースト */
+@supports (padding: max(0px)) {
+    .toast-container {
+        bottom: max(20px, env(safe-area-inset-bottom) + 10px);
+        right: max(20px, env(safe-area-inset-right) + 10px);
+    }
+}
+
+/* スピナーのアニメーション改善 */
+.loading-spinner .spinner-border {
+    width: 3rem;
+    height: 3rem;
+    color: #4285F4;
+    animation: spinner 1s linear infinite;
+}
+
+@keyframes spinner {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
 }
 
 /* タッチデバイス用の強調表示 */
 .touch-feedback:active {
     opacity: 0.7;
     transform: scale(0.98);
+    transition: all 0.1s ease;
 }
 
 /* ファイル入力ラベルを適切に表示 */
