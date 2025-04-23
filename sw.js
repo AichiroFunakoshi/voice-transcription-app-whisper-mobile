@@ -1,4 +1,4 @@
-const CACHE_NAME = 'voice-transcription-app-v1';
+const CACHE_NAME = 'voice-transcription-app-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -14,6 +14,10 @@ const urlsToCache = [
 
 // インストール時にキャッシュする
 self.addEventListener('install', function(event) {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(function(cache) {
+        self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(function(cache) {
@@ -58,6 +62,11 @@ self.addEventListener('fetch', function(event) {
 
 // 古いキャッシュの削除
 self.addEventListener('activate', function(event) {
+  var cacheWhitelist = [CACHE_NAME];
+  
+  event.waitUntil(
+    caches.keys().then(function(cacheNames) {
+      clients.claim();
   var cacheWhitelist = [CACHE_NAME];
   
   event.waitUntil(
